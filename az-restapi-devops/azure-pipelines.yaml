@@ -1,0 +1,49 @@
+trigger:
+- main
+
+variables:
+  dockerRegistryServiceConnection: '<docker-service-connection>'
+  imageRepository: '<registry-name>.azurecr.io/<image-name>'
+  dockerfilePath: 'Dockerfile'
+  tag: '$(Build.BuildId)'
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: Docker@2
+      inputs:
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        repository: '$(imageRepository)'
+        command: 'buildAndPush'
+        Dockerfile: '$(dockerfilePath)'
+        tags: |
+          $(tag)
+
+- stage: Deploy
+  jobs:
+  - deployment: Deploy
+    environment: 'aks'
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: Kubernetes@1
+            inputs:
+              connectionType: 'Azure Resource Manager'
+              azureSubscription: '<azure-subscription>'
+              azureResourceGroup: '<resource-group-name>'
+              kubernetesCluster: '<cluster-name>'
+              namespace: 'default'
+              command: 'apply'
+              useConfigurationFile: true
+              configuration: |
+                kubernetes/deployment.yaml
+                kubernetes/service.yaml
+              secretType: 'dockerRegistry'
+              dockerRegistryEndpoint: '$(dockerRegistryServiceConnection)'
